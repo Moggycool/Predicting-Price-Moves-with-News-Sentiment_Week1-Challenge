@@ -1,46 +1,46 @@
-"""Application Entry Point for News Sentiment Analysis Dashboard."""
-import sys
+"""Application entry point for the News Sentiment Analysis Dashboard."""
+# import necessary libraries
+import os  # pylint: disable=unused-import
 from pathlib import Path
-# Topic Modeling visualization
+import importlib
+import sys
+# pylint: disable=wrong-import-position
+# Data visualization libraries
+import pyLDAvis.sklearn   # ✔ FIXED: sklearn_models removed
 import pyLDAvis
-import pyLDAvis.sklearn
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
+import matplotlib.pyplot as plt
+import pandas as pd
+import streamlit as st
 
-# Add src to path (if src is at root level)
+# Custom module imports
+from publication_analysis import PublisherAnalyzer
+from topic_modeling import TopicModeler
+from time_analysis import TimeSeriesAnalyzer
+import publication_analysis
+import topic_modeling
+import time_analysis
+# Add src to path
 src_path = Path(__file__).parent / "src"
 sys.path.append(str(src_path))
 
-# Import custom modules
-try:
-    from publication_analysis import PublisherAnalyzer
-    from topic_modeling import TopicModeler
-    from time_analysis import TimeSeriesAnalyzer
-except ImportError:
-    # Try scripts/src structure
-    src_path = Path(__file__).parent / "scripts" / "src"
-    sys.path.append(str(src_path))
+# Reload custom modules
 
-    # Re-import custom modules
-    # ------------------------------------------
-    # pylint: disable=import-error
-    # pyright: ignore[reportMissingImports]
-    from publication_analysis import PublisherAnalyzer
-    from topic_modeling import TopicModeler
-    from time_analysis import TimeSeriesAnalyzer
+importlib.reload(time_analysis)
+importlib.reload(topic_modeling)
+importlib.reload(publication_analysis)
+# Streamlit and data viz imports
+
+# Set visualization styles
+plt.style.use("seaborn-darkgrid")
+sns.set(style="whitegrid")
 # --------------------------
-# Streamlit & Visualization Config
-
-# Set Streamlit page config
+# Streamlit Configuration
+# --------------------------
 st.set_page_config(
     page_title="News Sentiment Analysis Dashboard",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
-# Set seaborn style
-sns.set(style="whitegrid")
 
 
 # --------------------------
@@ -69,7 +69,8 @@ else:
 # Time Series Analysis
 # --------------------------
 st.header("📈 Time Series Analysis")
-ts_analyzer = TimeSeriesAnalyzer(data_file)
+
+ts_analyzer = TimeSeriesAnalyzer(df)   # ✔ uses dataframe instead of file path
 daily_counts, spikes, hourly_counts = ts_analyzer.run()
 
 st.subheader("Daily Article Trend")
@@ -93,33 +94,50 @@ st.pyplot(fig)
 st.header("📝 Topic Modeling (LDA)")
 
 topic_modeler_obj = TopicModeler(
-    data_path=data_file,
+    data=df,                 # ✔ use dataframe directly
     num_topics=num_topics,
     max_features=1000,
     sample_size=1000
 )
+
 topics = topic_modeler_obj.run()
+
 st.subheader("Top Words per Topic")
 st.text(topics)
 
+# --------------------------
+# LDA Visualization
+# --------------------------
 st.subheader("Interactive Topic Visualization")
-lda_vis_data = pyLDAvis.sklearn.prepare(
-    topic_modeler_obj.lda_model,
-    topic_modeler_obj.doc_term_matrix,
-    topic_modeler_obj.vectorizer,
-    mds='tsne'
-)
-# Display in Streamlit
-st.components.v1.html(pyLDAvis.prepared_data_to_html(lda_vis_data), height=800)
+
+try:
+    lda_vis_data = pyLDAvis.sklearn.prepare(
+        topic_modeler_obj.lda_model,
+        topic_modeler_obj.doc_term_matrix,
+        topic_modeler_obj.vectorizer,
+        mds='tsne'
+    )
+
+    st.components.v1.html(
+        pyLDAvis.prepared_data_to_html(lda_vis_data),
+        height=800
+    )
+
+except Exception as e:
+    st.error("pyLDAvis failed to render the LDA visualization.")
+    st.info(f"Error: {e}")
+    st.info("Try: pip install pyLDAvis==3.4.0")
 
 # --------------------------
 # Publisher Analysis
 # --------------------------
 st.header("🏢 Publisher Analysis")
 
-pub_analyzer = PublisherAnalyzer(data_file)
+pub_analyzer = PublisherAnalyzer(df)  # ✔ use dataframe directly
 publisher_counts, domain_counts, news_type_dist = pub_analyzer.run_full_analysis(
-    top_n=top_publishers, type_column="stock")
+    top_n=top_publishers,
+    type_column="stock"
+)
 
 st.subheader(f"Top {top_publishers} Publishers")
 st.bar_chart(publisher_counts.head(top_publishers))
