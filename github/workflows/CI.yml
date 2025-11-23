@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Install dev dependencies if you have a dev-requirements.txt
+          # pip install -r dev-requirements.txt
+
+      - name: Run linting
+        run: |
+          pip install pylint black flake8
+          # Lint with flake8
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Check code formatting with black
+          black --check .
+
+      - name: Run tests
+        run: |
+          # Run your test suite
+          python -m pytest tests/ -v
+          # Or if you don't have tests yet, just verify imports
+          python -c "import data_loader; print('Import successful')"
