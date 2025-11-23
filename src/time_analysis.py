@@ -1,121 +1,156 @@
 """
-time_analysis.py
-Performs time-based analysis on preprocessed analyst ratings data.
-
-Features:
-1. Publication frequency over time (daily/weekly/monthly)
-2. Analysis of publishing times (hour of day)
+time_analysis.py — Class-based Time Series Analysis for news datasets.
 """
 
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 
-plt.rcParams["figure.figsize"] = (12, 5)
 
+class TimeSeriesAnalyzer:
+    """
+    Performs time series analysis on news publication data.
 
-class TimeAnalysis:
-    """Time-based analysis on preprocessed data."""
+    Features:
+    - Daily/weekly/monthly publication trends
+    - Spike detection
+    - Hour-of-day publication analysis
+    """
 
-    def __init__(self, df, date_column="date"):
+    def __init__(self, data_path: str):
         """
-        Initialize TimeAnalysis class.
+        Initialize the analyzer with path to preprocessed CSV data.
 
-        Args:
-            df (pd.DataFrame): Preprocessed dataframe from DataLoader
-            date_column (str): Column containing datetime values
+        Parameters
+        ----------
+        data_path : str
+            Path to 'preprocessed_data.csv'
         """
-        self.df = df.copy()
-        self.date_column = date_column
+        self.data_path = data_path
+        self.df = None
+        self.daily_counts = None
+        self.hourly_counts = None
 
-        # Ensure datetime type
-        if not pd.api.types.is_datetime64_any_dtype(self.df[date_column]):
-            self.df[date_column] = pd.to_datetime(
-                self.df[date_column], errors="coerce")
+    # ---------------------------------------------------------------
+    def load_data(self):
+        """Load preprocessed CSV and parse dates."""
+        self.df = pd.read_csv(self.data_path)
+        if "date" not in self.df.columns:
+            raise ValueError("Dataset must contain a 'date' column!")
 
-        # Drop invalid dates
-        self.df.dropna(subset=[date_column], inplace=True)
+        self.df["date"] = pd.to_datetime(self.df["date"], errors="coerce")
+        self.df = self.df.dropna(subset=["date"])
 
-    # ============================================================
-    # 1. Publication Frequency Over Time
-    # ============================================================
-    def publication_frequency(self):
+    # ---------------------------------------------------------------
+    def compute_daily_counts(self):
+        """Compute daily article counts."""
+        self.daily_counts = self.df.groupby(self.df["date"].dt.date).size()
+        return self.daily_counts
+
+    # ---------------------------------------------------------------
+    def detect_spikes(self, threshold_std=2):
         """
-        Analyze article counts over time to identify spikes.
+        Detect days with unusually high publication volume.
 
-        Returns:
-            dict: daily, weekly, monthly publication counts
+        Parameters
+        ----------
+        threshold_std : float
+            Number of standard deviations above mean to consider a spike.
+
+        Returns
+        -------
+        pd.Series
+            Days considered spikes with their article counts.
         """
-        df = self.df.set_index(self.date_column)
+        mean_count = self.daily_counts.mean()
+        std_count = self.daily_counts.std()
+        spike_threshold = mean_count + threshold_std * std_count
+        spikes = self.daily_counts[self.daily_counts > spike_threshold]
+        return spikes
 
-        daily = df.resample("D").size()
-        weekly = df.resample("W").size()
-        monthly = df.resample("M").size()
-
-        # Plot daily trend
-        plt.figure()
-        daily.plot()
-        plt.title("Daily Article Publication Frequency")
+    # ---------------------------------------------------------------
+    def plot_daily_trend(self, spikes=None):
+        """Plot daily publication trend with optional spikes highlighted."""
+        plt.figure(figsize=(14, 5))
+        self.daily_counts.plot(label="Daily Count")
+        if spikes is not None:
+            plt.scatter(spikes.index, spikes.values,
+                        color="red", label="Spikes", zorder=5)
+        plt.title("Daily News Publication Trend")
         plt.xlabel("Date")
         plt.ylabel("Number of Articles")
+        plt.legend()
         plt.show()
 
-        # Plot weekly trend
-        plt.figure()
-        weekly.plot(marker='o')
-        plt.title("Weekly Article Publication Frequency")
-        plt.xlabel("Week")
+    # ---------------------------------------------------------------
+    def compute_hourly_distribution(self):
+        """Compute number of articles published by hour of the day."""
+        self.df["hour"] = self.df["date"].dt.hour
+        self.hourly_counts = self.df.groupby("hour").size()
+        return self.hourly_counts
+
+    # ---------------------------------------------------------------
+    def plot_hourly_distribution(self):
+        """Plot articles published by hour of the day."""
+        plt.figure(figsize=(10, 5))
+        sns.barplot(x=self.hourly_counts.index,
+                    y=self.hourly_counts.values, palette="viridis")
+        plt.title("Articles Published by Hour of Day")
+        plt.xlabel("Hour (0-23)")
         plt.ylabel("Number of Articles")
         plt.show()
 
-        # Plot monthly trend
-        plt.figure()
-        monthly.plot(marker='o')
-        plt.title("Monthly Article Publication Frequency")
-        plt.xlabel("Month")
-        plt.ylabel("Number of Articles")
-        plt.show()
+    # ---------------------------------------------------------------
+    def run(self):
+        """Run full time series analysis pipeline."""
+        print("Loading data...")
+        self.load_data()
 
-        return {
-            "daily": daily,
-            "weekly": weekly,
-            "monthly": monthly
-        }
+        print("Computing daily publication counts...")
+        self.compute_daily_counts()
 
-    # ============================================================
-    # 2. Publishing Time Analysis
-    # ============================================================
-    def publishing_time_analysis(self):
+        print("Detecting publication spikes...")
+        spikes = self.detect_spikes()
+        print("Spikes detected on these dates:\n", spikes)
+
+        print("Plotting daily trend...")
+        self.plot_daily_trend(spikes=spikes)
+
+        print("Computing hourly publication distribution...")
+        self.compute_hourly_distribution()
+
+        print("Plotting hourly distribution...")
+        self.plot_hourly_distribution()
+
+        return self.daily_counts, spikes, self.hourly_counts
+    # ---------------------------------------------------------------
+
+    def plot_weekday_hour_heatmap(self):
         """
-        Analyze publishing times (hour of day, weekday trends)
-
-        Returns:
-            dict: hourly and weekday distribution
+        Plot a heatmap of article frequency by hour of the day vs weekday.
         """
-        df = self.df.copy()
-        df["hour"] = df[self.date_column].dt.hour
-        df["weekday"] = df[self.date_column].dt.day_name()
+        # Ensure weekday and hour columns exist
+        self.df["hour"] = self.df["date"].dt.hour
+        self.df["weekday"] = self.df["date"].dt.day_name()
 
-        # Hourly distribution
-        hourly_counts = df["hour"].value_counts().sort_index()
-        plt.figure()
-        hourly_counts.plot(kind="bar")
-        plt.title("Article Publications by Hour of Day")
-        plt.xlabel("Hour")
-        plt.ylabel("Number of Articles")
-        plt.show()
+        # Pivot table: rows=hour, columns=weekday, values=count of articles
+        pivot = self.df.pivot_table(
+            index="hour",
+            columns="weekday",
+            values="headline",
+            aggfunc="count",
+            fill_value=0
+        )
 
-        # Weekday distribution
+        # Reorder columns to weekday order
         weekday_order = ["Monday", "Tuesday", "Wednesday",
                          "Thursday", "Friday", "Saturday", "Sunday"]
-        weekday_counts = df["weekday"].value_counts().reindex(weekday_order)
-        plt.figure()
-        weekday_counts.plot(kind="bar", color='orange')
-        plt.title("Article Publications by Weekday")
-        plt.xlabel("Weekday")
-        plt.ylabel("Number of Articles")
-        plt.show()
+        pivot = pivot[weekday_order]
 
-        return {
-            "hourly": hourly_counts,
-            "weekday": weekday_counts
-        }
+        # Plot heatmap
+        plt.figure(figsize=(12, 6))
+        sns.heatmap(pivot, cmap="YlGnBu", annot=True, fmt="d")
+        plt.title("Heatmap: Hour of Day vs Weekday Publication Frequency")
+        plt.xlabel("Weekday")
+        plt.ylabel("Hour of Day")
+        plt.show()

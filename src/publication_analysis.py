@@ -1,118 +1,138 @@
 """
-publication_analysis.py
-Performs publisher-level analysis on preprocessed analyst ratings data.
-
-Features:
-1. Identify most active publishers
-2. Analyze differences in the type of news they report
-3. Extract email domains if publisher names are emails
+publication_analysis.py — Class-based Publisher Analysis on news datasets
 """
 
-import re
+import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 
-plt.rcParams["figure.figsize"] = (12, 5)
+
+sns.set(style="whitegrid")
 
 
-class PublicationAnalysis:
-    """Publisher-level analysis on preprocessed data."""
+class PublisherAnalyzer:
+    """
+    Perform analysis of news publishers:
+    - Count articles per publisher
+    - Identify top contributors
+    - Extract domains from email-like publisher names
+    - Compare types of news per publisher
+    """
 
-    def __init__(self, df, publisher_column="publisher", text_column="headline"):
+    def __init__(self, data_path: str):
         """
-        Initialize PublicationAnalysis class.
+        Initialize PublisherAnalyzer.
 
-        Args:
-            df (pd.DataFrame): Preprocessed DataFrame from DataLoader
-            publisher_column (str): Column containing publisher names
-            text_column (str): Column containing headline or article text
+        :param data_path: Path to preprocessed CSV data
         """
-        self.df = df.copy()
-        self.publisher_column = publisher_column
-        self.text_column = text_column
+        self.data_path = data_path
+        self.df = None
+        self.publisher_counts = None
+        self.domain_counts = None
 
-    # ============================================================
-    # 1. Most Active Publishers
-    # ============================================================
-    def most_active_publishers(self, top_n=10):
-        """
-        Count articles per publisher and visualize top contributors.
+    # -------------------------
+    def load_data(self):
+        """Load the CSV file and basic validation."""
+        self.df = pd.read_csv(self.data_path)
+        if "publisher" not in self.df.columns:
+            raise ValueError("Dataset must contain a 'publisher' column!")
+        if "headline" not in self.df.columns:
+            raise ValueError("Dataset must contain a 'headline' column!")
 
-        Returns:
-            pd.Series: top_n publisher counts
-        """
-        counts = self.df[self.publisher_column].value_counts()
-        top_counts = counts.head(top_n)
+    # -------------------------
+    def count_articles_per_publisher(self):
+        """Count how many articles each publisher contributes."""
+        self.publisher_counts = self.df["publisher"].value_counts()
+        return self.publisher_counts
 
-        print(f"Top {top_n} Most Active Publishers:")
-        print(top_counts)
+    # -------------------------
+    def plot_top_publishers(self, top_n=10):
+        """Plot top N publishers by article count."""
+        if self.publisher_counts is None:
+            self.count_articles_per_publisher()
 
-        top_counts.plot(kind="bar")
+        top_publishers = self.publisher_counts.head(top_n)
+        plt.figure(figsize=(10, 6))
+        sns.barplot(x=top_publishers.values,
+                    y=top_publishers.index, palette="viridis")
         plt.title(f"Top {top_n} Publishers by Number of Articles")
-        plt.xlabel("Publisher")
-        plt.ylabel("Number of Articles")
-        plt.xticks(rotation=45)
+        plt.xlabel("Number of Articles")
+        plt.ylabel("Publisher")
         plt.show()
 
-        return top_counts
-
-    # ============================================================
-    # 2. News Type Analysis per Publisher
-    # ============================================================
-    def news_type_by_publisher(self):
+    # -------------------------
+    def extract_email_domains(self):
         """
-        Simple analysis of differences in headlines per publisher.
-        Calculates average headline length per publisher as a proxy for type.
-
-        Returns:
-            pd.DataFrame: publisher vs avg headline length
+        Extract domains if publisher names are email addresses.
         """
-        self.df["headline_length"] = self.df[self.text_column].astype(
-            str).str.len()
-        avg_length = self.df.groupby(self.publisher_column)[
-            "headline_length"].mean().sort_values(ascending=False)
+        def get_domain(publisher):
+            if "@" in publisher:
+                return publisher.split("@")[1].lower()
+            return publisher.lower()
 
-        print("Average Headline Length per Publisher (as proxy for news type):")
-        print(avg_length.head(10))
+        self.df["publisher_domain"] = self.df["publisher"].astype(
+            str).apply(get_domain)
+        self.domain_counts = self.df["publisher_domain"].value_counts()
+        return self.domain_counts
 
-        avg_length.head(10).plot(kind="bar", color="orange")
-        plt.title("Average Headline Length by Publisher")
-        plt.xlabel("Publisher")
-        plt.ylabel("Average Headline Length")
-        plt.xticks(rotation=45)
+    # -------------------------
+    def plot_top_domains(self, top_n=10):
+        """Plot top N domains if emails are used as publisher names."""
+        if self.domain_counts is None:
+            self.extract_email_domains()
+
+        top_domains = self.domain_counts.head(top_n)
+        plt.figure(figsize=(10, 6))
+        sns.barplot(x=top_domains.values,
+                    y=top_domains.index, palette="coolwarm")
+        plt.title(f"Top {top_n} Publisher Domains")
+        plt.xlabel("Number of Articles")
+        plt.ylabel("Domain")
         plt.show()
 
-        return avg_length
-
-    # ============================================================
-    # 3. Email Domain Analysis
-    # ============================================================
-    def email_domain_analysis(self):
+    # -------------------------
+    def analyze_news_types_per_publisher(self, column="stock"):
         """
-        Identify unique email domains in publisher column if emails are used.
-
-        Returns:
-            pd.Series: counts of top domains
+        Analyze difference in type of news reported by publishers.
+        Assumes there is a 'column' indicating news category (like 'stock' or 'news_type').
         """
-        # Extract domain if publisher looks like email
-        self.df["publisher_domain"] = self.df[self.publisher_column].apply(
-            lambda x: re.search(
-                r"@([\w.-]+)", x).group(1) if re.search(r"@([\w.-]+)", str(x)) else None
+        if column not in self.df.columns:
+            raise ValueError(f"Column '{column}' not found in dataset!")
+
+        pivot = self.df.pivot_table(
+            index="publisher",
+            columns=column,
+            values="headline",
+            aggfunc="count",
+            fill_value=0
         )
 
-        domain_counts = self.df["publisher_domain"].value_counts().dropna()
-        top_domains = domain_counts.head(10)
+        print("News type distribution per publisher:")
+        print(pivot.head(10))  # show top 10 publishers
+        return pivot
 
-        if not top_domains.empty:
-            print("Top Publisher Email Domains:")
-            print(top_domains)
+    # -------------------------
+    def run_full_analysis(self, top_n=10, type_column="stock"):
+        """
+        Run the full analysis pipeline:
+        - Publisher counts & plot
+        - Domain extraction & plot
+        - News type distribution
+        """
+        print("Loading data...")
+        self.load_data()
 
-            top_domains.plot(kind="bar", color="green")
-            plt.title("Top Publisher Email Domains")
-            plt.xlabel("Domain")
-            plt.ylabel("Number of Articles")
-            plt.xticks(rotation=45)
-            plt.show()
-        else:
-            print("No email addresses found in publisher column.")
+        print("\nCounting articles per publisher...")
+        self.count_articles_per_publisher()
+        self.plot_top_publishers(top_n=top_n)
 
-        return top_domains
+        print("\nExtracting domains from publishers...")
+        self.extract_email_domains()
+        self.plot_top_domains(top_n=top_n)
+
+        print(
+            f"\nAnalyzing news types per publisher using column '{type_column}'...")
+        news_type_distribution = self.analyze_news_types_per_publisher(
+            column=type_column)
+
+        return self.publisher_counts, self.domain_counts, news_type_distribution
