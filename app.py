@@ -6,8 +6,9 @@ import importlib
 import sys
 # pylint: disable=wrong-import-position
 # Data visualization libraries
-import pyLDAvis.sklearn   # ✔ FIXED: sklearn_models removed
 import pyLDAvis
+import pyLDAvis.sklearn  # pylint: disable=unused-import
+# Data manipulation and visualization libraries
 import seaborn as sns
 import matplotlib.pyplot as plt
 import pandas as pd

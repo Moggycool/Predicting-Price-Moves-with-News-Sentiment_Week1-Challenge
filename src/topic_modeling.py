@@ -17,7 +17,7 @@ nltk.download("stopwords", quiet=True)
 class TopicModeler:
     """ Class for topic modeling on news headlines using LDA. """
 
-    def __init__(self, data_path: str, num_topics: int = 4, max_features: int = 1000, sample_size: int = 1000):
+    def __init__(self, data_path: str, num_topics: int = 4, max_features: int = 1000, sample_size: int = 1000):  # pylint: disable=R0913
         """
         Initialize TopicModeler.
 
