@@ -67,7 +67,7 @@ pydantic==2.12.4
 pydantic_core==2.41.5
 pydeck==0.9.1
 Pygments==2.19.2
-pyLDAvis==3.4.0
+pyLDAvis==3.4.1
 pynance==1.0.0
 pyparsing==3.2.5
 pyproject_hooks==1.2.0

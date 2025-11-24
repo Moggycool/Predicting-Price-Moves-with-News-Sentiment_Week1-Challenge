@@ -2,3 +2,5 @@ Moenv
 .vscode
 data
 outputs
+.streamlit
+__pycache__
