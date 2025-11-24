@@ -1,150 +1,162 @@
-"""Application entry point for the News Sentiment Analysis Dashboard."""
-# import necessary libraries
-import os  # pylint: disable=unused-import
+"""
+Application entry point for the News Sentiment Analysis Dashboard
+(using Streamlit-ready modules)
+"""
+
+# --------------------------
+# Standard library imports
 from pathlib import Path
 import importlib
 import sys
-# pylint: disable=wrong-import-position
-# Data visualization libraries
-import pyLDAvis
-import pyLDAvis.sklearn  # pylint: disable=unused-import
-# Data manipulation and visualization libraries
+import inspect
+
+# --------------------------
+# Data visualization and manipulation
+import matplotlib.pyplot as plt  # pylint: disable=import-error
 import seaborn as sns
-import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
 
-# Custom module imports
-from publication_analysis import PublisherAnalyzer
-from topic_modeling import TopicModeler
-from time_analysis import TimeSeriesAnalyzer
-import publication_analysis
-import topic_modeling
-import time_analysis
-# Add src to path
-src_path = Path(__file__).parent / "src"
-sys.path.append(str(src_path))
-
-# Reload custom modules
-
-importlib.reload(time_analysis)
-importlib.reload(topic_modeling)
-importlib.reload(publication_analysis)
-# Streamlit and data viz imports
-
-# Set visualization styles
-plt.style.use("seaborn-darkgrid")
-sns.set(style="whitegrid")
 # --------------------------
-# Streamlit Configuration
+# pyLDAvis for LDA visualization
+import pyLDAvis
+# import pyLDAvis.sklearn
+
 # --------------------------
+# Streamlit configuration
 st.set_page_config(
     page_title="News Sentiment Analysis Dashboard",
     layout="wide"
 )
-
+sns.set_theme(style="darkgrid")  # or "whitegrid"
 
 # --------------------------
+# Add src folder to path
+src_path = Path(__file__).parent / "src"
+sys.path.append(str(src_path))
+
+# --------------------------
+# Module configuration for safe import/reload
+modules_info = {
+    "src.time_ana_stream": "time_ana_stream",
+    "src.tex_ana_stream": "tex_ana_stream",
+    "src.pub_ana_stream": "pub_ana_stream"
+}
+
+modules = {}
+
+# ==========================
+# Import or reload modules safely
+for module_path, var_name in modules_info.items():
+    if module_path in sys.modules:
+        module = importlib.reload(sys.modules[module_path])
+    else:
+        module = importlib.import_module(module_path)
+    modules[var_name] = module
+
+# Assign modules to variables
+time_ana_stream = modules["time_ana_stream"]
+tex_ana_stream = modules["tex_ana_stream"]
+pub_ana_stream = modules["pub_ana_stream"]
+
+# ==========================
+# Helper function to check if a class can be instantiated safely
+
+
+def can_instantiate(cls):
+    """Check if a class can be instantiated without required parameters."""
+    sig = inspect.signature(cls)
+    for param in sig.parameters.values():
+        if param.default is param.empty and param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD):  # pylint: disable=line-too-long
+            return False
+    return True
+
+
+# ==========================
+# Set max upload size to 1 GB (1024 MB)
+# Set.set_option('server.maxUploadSize', 1024)
+# ==========================
+
 # Sidebar
-# --------------------------
 st.sidebar.title("News Sentiment Analysis Dashboard")
-
-data_file = st.sidebar.file_uploader(
-    "Upload preprocessed CSV", type=["csv"], accept_multiple_files=False
-)
-
+data_file = st.sidebar.file_uploader("Upload preprocessed CSV", type=["csv"])
 num_topics = st.sidebar.slider("Number of Topics (LDA)", 2, 10, 3)
 top_publishers = st.sidebar.slider("Top Publishers", 5, 20, 10)
 
-# --------------------------
-# Load data
-# --------------------------
+# ==========================
+# Load data with fallback
+local_csv = Path(__file__).parent / "data/processed/preprocessed_data.csv"
 if data_file is not None:
     df = pd.read_csv(data_file)
-    st.success(f"Data loaded: {df.shape[0]} rows, {df.shape[1]} columns")
+    st.success(f"Data loaded from uploaded file: {df.shape}")
+elif local_csv.exists():
+    df = pd.read_csv(local_csv)
+    st.success(f"Data loaded from local CSV: {df.shape}")
 else:
-    st.warning("Please upload a preprocessed CSV to continue.")
+    st.warning("Please upload a CSV or ensure local CSV exists.")
     st.stop()
 
-# --------------------------
+# ==========================
 # Time Series Analysis
-# --------------------------
 st.header("📈 Time Series Analysis")
-
-ts_analyzer = TimeSeriesAnalyzer(df)   # ✔ uses dataframe instead of file path
+ts_analyzer = time_ana_stream.TimeSeriesAnalyzer(df)
 daily_counts, spikes, hourly_counts = ts_analyzer.run()
 
 st.subheader("Daily Article Trend")
-fig, ax = plt.subplots(figsize=(10, 5))
-ts_analyzer.plot_daily_trend(spikes=spikes)
+fig = ts_analyzer.plot_daily_trend(spikes=spikes, return_fig=True)
 st.pyplot(fig)
 
 st.subheader("Hourly Distribution of Articles")
-fig, ax = plt.subplots(figsize=(10, 4))
-ts_analyzer.plot_hourly_distribution()
+fig = ts_analyzer.plot_hourly_distribution(return_fig=True)
 st.pyplot(fig)
 
 st.subheader("Weekday-Hour Heatmap")
-fig, ax = plt.subplots(figsize=(10, 6))
-ts_analyzer.plot_weekday_hour_heatmap()
+fig = ts_analyzer.plot_weekday_hour_heatmap(return_fig=True)
 st.pyplot(fig)
 
 # --------------------------
 # Topic Modeling
-# --------------------------
 st.header("📝 Topic Modeling (LDA)")
-
-topic_modeler_obj = TopicModeler(
-    data=df,                 # ✔ use dataframe directly
-    num_topics=num_topics,
-    max_features=1000,
-    sample_size=1000
+topic_modeler = tex_ana_stream.TopicModeler(
+    df, num_topics=num_topics, max_features=1000, sample_size=1000
 )
-
-topics = topic_modeler_obj.run()
-
+topics = topic_modeler.run()
 st.subheader("Top Words per Topic")
 st.text(topics)
-
 # --------------------------
-# LDA Visualization
-# --------------------------
+# Interactive LDA Visualization
 st.subheader("Interactive Topic Visualization")
-
 try:
     lda_vis_data = pyLDAvis.sklearn.prepare(
-        topic_modeler_obj.lda_model,
-        topic_modeler_obj.doc_term_matrix,
-        topic_modeler_obj.vectorizer,
+        topic_modeler.lda_model,
+        topic_modeler.vectorizer.transform(df["headline"].astype(str)),
+        topic_modeler.vectorizer.get_feature_names_out(),  # direct array, no Series
         mds='tsne'
     )
-
     st.components.v1.html(
-        pyLDAvis.prepared_data_to_html(lda_vis_data),
-        height=800
+        pyLDAvis.prepared_data_to_html(lda_vis_data), height=800
     )
-
-except Exception as e:
+except (AttributeError, ValueError, TypeError) as e:
     st.error("pyLDAvis failed to render the LDA visualization.")
     st.info(f"Error: {e}")
-    st.info("Try: pip install pyLDAvis==3.4.0")
+    st.info("Ensure CountVectorizer.get_feature_names_out() is used (sklearn >=1.0)")
 
-# --------------------------
+# ==========================
 # Publisher Analysis
-# --------------------------
 st.header("🏢 Publisher Analysis")
-
-pub_analyzer = PublisherAnalyzer(df)  # ✔ use dataframe directly
+pub_analyzer = pub_ana_stream.PublisherAnalyzer(df)
 publisher_counts, domain_counts, news_type_dist = pub_analyzer.run_full_analysis(
     top_n=top_publishers,
     type_column="stock"
 )
 
 st.subheader(f"Top {top_publishers} Publishers")
-st.bar_chart(publisher_counts.head(top_publishers))
+fig = pub_analyzer.plot_top_publishers(top_n=top_publishers, return_fig=True)
+st.pyplot(fig)
 
 st.subheader("Top Domains")
-st.bar_chart(domain_counts.head(top_publishers))
+fig = pub_analyzer.plot_top_domains(top_n=top_publishers, return_fig=True)
+st.pyplot(fig)
 
 st.subheader("News Type Distribution per Publisher")
 st.dataframe(news_type_dist.head(top_publishers))
