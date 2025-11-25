@@ -8,35 +8,43 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # -----------------------------
+    # Run tests across OS and Python versions
+    # -----------------------------
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.13"]
 
     steps:
-      - name: Checkout code
+      # -----------------------------
+      # 1️⃣ Checkout repository
+      # -----------------------------
+      - name: Checkout repository
         uses: actions/checkout@v4
 
+      # -----------------------------
+      # 2️⃣ Set up Python
+      # -----------------------------
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.9"
+          python-version: ${{ matrix.python-version }}
 
+      # -----------------------------
+      # 3️⃣ Install dependencies + source package
+      # -----------------------------
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          # Install dev dependencies if you have a dev-requirements.txt
-          # pip install -r dev-requirements.txt
+          pip install -e .
+          pip install pytest pytest-cov
 
-      - name: Run linting
-        run: |
-          pip install pylint black flake8
-          # Lint with flake8
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Check code formatting with black
-          black --check .
-
+      # -----------------------------
+      # 4️⃣ Run all tests with coverage
+      # -----------------------------
       - name: Run tests
         run: |
-          # Run your test suite
-          python -m pytest tests/ -v
-          # Or if you don't have tests yet, just verify imports
-          python -c "import data_loader; print('Import successful')"
+          pytest tests/ -v --maxfail=1 --disable-warnings --cov=src --cov-report=term-missing
